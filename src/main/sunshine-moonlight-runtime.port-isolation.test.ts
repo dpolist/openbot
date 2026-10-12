@@ -124,6 +124,7 @@ interface Harness {
   pinSubmitted: Deferred<void>;
   servers: Array<HttpServer | HttpsServer>;
   serverErrors: unknown[];
+  sunshineArguments: string[][];
   spawn: RemoteRuntimeSpawn;
   closeAll(): Promise<void>;
 }
@@ -322,6 +323,7 @@ function createHarness(stateDirectory: string): Harness {
     pinSubmitted: createDeferred<void>(),
     servers: [],
     serverErrors: [],
+    sunshineArguments: [],
     spawn: createHarnessSpawn(),
     closeAll: async () => {
       await Promise.all(harness.servers.map((server) => closeServer(server)));
@@ -331,6 +333,7 @@ function createHarness(stateDirectory: string): Harness {
     const spawn = (executable: string, args: string[], options: SpawnOptions): FakeChild => {
       if (args.some((arg) => arg.includes("test-password"))) throw new Error("Password exposed in child arguments.");
       if (executable === TEST_PATHS.sunshine) {
+        harness.sunshineArguments.push([...args]);
         const config = readFileSync(args[0] ?? "", "utf8");
         const base = Number(/^\s*port\s*=\s*(\d+)\s*$/m.exec(config)?.[1]);
         if (!Number.isInteger(base)) throw new Error("Fake Sunshine did not receive a base port in sunshine.conf.");
@@ -617,6 +620,9 @@ describe("Sunshine port isolation", () => {
       const sunshineConf = await readFile(join(harness.stateDirectory, "sunshine.conf"), "utf8");
       expect(sunshineConf).toContain(`port = ${base}`);
       expect(sunshineConf).toContain("bind_address = 127.0.0.1");
+      expect(harness.sunshineArguments).toEqual([
+        [join(harness.stateDirectory, "sunshine.conf"), "system_tray=disabled"],
+      ]);
       const moonlightConfig = moonlightConfigFileSchema.parse(
         JSON.parse(await readFile(join(harness.stateDirectory, "moonlight-config.json"), "utf8")),
       );
